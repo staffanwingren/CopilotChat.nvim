@@ -57,12 +57,15 @@ end
 ---@return string
 local function github_device_flow(tag, client_id, scope)
   local function request_device_code()
-    local res = curl.post('https://github.com/login/device/code', {
+    local res = curl.post('https://uppsala-monitoring-centre.ghe.com/login/device/code', {
       body = {
         client_id = client_id,
         scope = scope,
       },
-      headers = { ['Accept'] = 'application/json' },
+      headers = {
+        ['Accept'] = 'application/json',
+        ['User-Agent'] = 'CopilotChat.nvim'
+      },
     })
 
     local data = vim.json.decode(res.body)
@@ -72,14 +75,17 @@ local function github_device_flow(tag, client_id, scope)
   local function poll_for_token(device_code, interval)
     plenary_utils.sleep(interval * 1000)
 
-    local res = curl.post('https://github.com/login/oauth/access_token', {
+    local res = curl.post('https://uppsala-monitoring-centre.ghe.com/login/oauth/access_token', {
       json_response = true,
       body = {
         client_id = client_id,
         device_code = device_code,
         grant_type = 'urn:ietf:params:oauth:grant-type:device_code',
       },
-      headers = { ['Accept'] = 'application/json' },
+      headers = {
+        ['Accept'] = 'application/json',
+        ['User-Agent'] = 'CopilotChat.nvim'
+      },
     })
 
     local data = res.body
@@ -136,11 +142,11 @@ local function get_github_copilot_token(tag)
   end
 
   -- loading token from the environment only in GitHub Codespaces
-  local codespaces = os.getenv('CODESPACES')
-  token = os.getenv('GITHUB_TOKEN')
-  if token and codespaces then
-    return set_token(tag, token, false)
-  end
+  --local codespaces = os.getenv('CODESPACES')
+  --token = os.getenv('GITHUB_TOKEN')
+  --if token and codespaces then
+  --  return set_token(tag, token, false)
+  --end
 
   -- loading token from the file
   local config_path = config_path()
@@ -157,7 +163,7 @@ local function get_github_copilot_token(tag)
         local parsed_data = utils.json_decode(file_data)
         if parsed_data then
           for key, value in pairs(parsed_data) do
-            if string.find(key, 'github.com') and value and value.oauth_token then
+            if string.find(key, 'uppsala-monitoring-centre.ghe.com') and value and value.oauth_token then
               return set_token(tag, value.oauth_token, false)
             end
           end
@@ -176,22 +182,22 @@ local function get_github_models_token(tag)
   end
 
   -- loading token from the environment only in GitHub Codespaces
-  local codespaces = os.getenv('CODESPACES')
-  token = os.getenv('GITHUB_TOKEN')
-  if token and codespaces then
-    return set_token(tag, token, false)
-  end
+  --local codespaces = os.getenv('CODESPACES')
+  --token = os.getenv('GITHUB_TOKEN')
+  --if token and codespaces then
+  --  return set_token(tag, token, false)
+  --end
 
-  -- loading token from gh cli if available
-  if vim.fn.executable('gh') == 0 then
-    local result = utils.system({ 'gh', 'auth', 'token', '-h', 'github.com' })
-    if result and result.code == 0 and result.stdout then
-      local gh_token = vim.trim(result.stdout)
-      if gh_token ~= '' and not gh_token:find('no oauth token') then
-        return set_token(tag, gh_token, false)
-      end
-    end
-  end
+  ---- loading token from gh cli if available
+  --if vim.fn.executable('gh') == 0 then
+  --  local result = utils.system({ 'gh', 'auth', 'token', '-h', 'github.com' })
+  --  if result and result.code == 0 and result.stdout then
+  --    local gh_token = vim.trim(result.stdout)
+  --    if gh_token ~= '' and not gh_token:find('no oauth token') then
+  --      return set_token(tag, gh_token, false)
+  --    end
+  --  end
+  --end
 
   return github_device_flow(tag, '178c6fc778ccc68e1d6a', 'read:user copilot')
 end
@@ -222,7 +228,7 @@ local M = {}
 
 M.copilot = {
   get_headers = function()
-    local response, err = curl.get('https://api.github.com/copilot_internal/v2/token', {
+    local response, err = curl.get('https://api.uppsala-monitoring-centre.ghe.com/copilot_internal/v2/token', {
       json_response = true,
       headers = {
         ['Authorization'] = 'Token ' .. get_github_copilot_token('github_copilot'),
@@ -243,7 +249,7 @@ M.copilot = {
   end,
 
   get_info = function()
-    local response, err = curl.get('https://api.github.com/copilot_internal/user', {
+    local response, err = curl.get('https://api.uppsala-monitoring-centre.ghe.com/copilot_internal/user', {
       json_response = true,
       headers = {
         ['Authorization'] = 'Token ' .. get_github_copilot_token('github_copilot'),
@@ -293,7 +299,7 @@ M.copilot = {
   end,
 
   get_models = function(headers)
-    local response, err = curl.get('https://api.githubcopilot.com/models', {
+    local response, err = curl.get('https://copilot-api.uppsala-monitoring-centre.ghe.com/models', {
       json_response = true,
       headers = headers,
     })
@@ -333,7 +339,7 @@ M.copilot = {
 
     for _, model in ipairs(models) do
       if not model.policy then
-        pcall(curl.post, 'https://api.githubcopilot.com/models/' .. model.id .. '/policy', {
+        pcall(curl.post, 'https://copilot-api.uppsala-monitoring-centre.ghe.com/models/' .. model.id .. '/policy', {
           headers = headers,
           json_request = true,
           body = { state = 'enabled' },
@@ -459,7 +465,7 @@ M.copilot = {
   end,
 
   get_url = function()
-    return 'https://api.githubcopilot.com/chat/completions'
+    return 'https://copilot-api.uppsala-monitoring-centre.ghe.com/chat/completions'
   end,
 }
 
@@ -469,11 +475,13 @@ M.github_models = {
   get_headers = function()
     return {
       ['Authorization'] = 'Bearer ' .. get_github_models_token('github_models'),
+      ['Accept'] = 'application/json',
+      ['User-Agent'] = 'CopilotChat.nvim',
     }
   end,
 
   get_models = function(headers)
-    local response, err = curl.get('https://models.github.ai/catalog/models', {
+    local response, err = curl.get('https://copilot-api.uppsala-monitoring-centre.ghe.com/catalog/models', {
       json_response = true,
       headers = headers,
     })
@@ -506,7 +514,7 @@ M.github_models = {
   prepare_output = M.copilot.prepare_output,
 
   get_url = function()
-    return 'https://models.github.ai/inference/chat/completions'
+    return 'https://copilot-api.uppsala-monitoring-centre.ghe.com/inference/chat/completions'
   end,
 }
 
